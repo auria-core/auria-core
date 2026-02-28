@@ -1,3 +1,10 @@
+// File: lib.rs - This file is part of AURIA
+// Copyright (c) 2026 AURIA Developers and Contributors
+// Description:
+//     Core types and data structures for the AURIA Runtime Core.
+//     This crate defines the fundamental types used across all AURIA components
+//     including Tensor, Shard, Expert, License, HardwareProfile, and error types.
+//
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
