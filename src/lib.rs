@@ -204,6 +204,135 @@ pub struct ExecutionState {
     pub kv_cache: Vec<Tensor>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpertDefinition {
+    pub expert_id: ExpertId,
+    pub shard_ids: Vec<ShardId>,
+    pub tensor_layout: TensorLayout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageReceipt {
+    pub request_id: RequestId,
+    pub expert_ids: Vec<ExpertId>,
+    pub token_count: u32,
+    pub timestamp: u64,
+    pub node_signature: Signature,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HardwareProfile {
+    pub cpu: CpuProfile,
+    pub gpu: Option<GpuProfile>,
+    pub ram_bytes: u64,
+    pub ram_bandwidth_gbps: f32,
+    pub disk_bandwidth_mbps: f32,
+    pub network_latency_ms: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CpuProfile {
+    pub vendor: String,
+    pub brand: String,
+    pub cores: u32,
+    pub threads: u32,
+    pub features: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GpuProfile {
+    pub vendor: String,
+    pub name: String,
+    pub vram_bytes: u64,
+    pub compute_capability: (u8, u8),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LicenseTerms {
+    pub license_type: LicenseType,
+    pub max_shards: u32,
+    pub allowed_tiers: Vec<String>,
+    pub rate_limit: Option<RateLimit>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LicenseType {
+    Subscription {
+        tier: String,
+        max_requests_per_day: u64,
+    },
+    PayPerUse {
+        credits: u64,
+        cost_per_token: f64,
+    },
+    Enterprise {
+        unlimited: bool,
+        max_concurrent_requests: u32,
+    },
+    Community {
+        tier: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimit {
+    pub requests_per_second: u32,
+    pub burst_size: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LicenseUsage {
+    pub license_id: ShardId,
+    pub node_pubkey: PublicKey,
+    pub tokens_used: u64,
+    pub requests_made: u64,
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StorageTier {
+    Vram,
+    Ram,
+    Disk,
+    Network,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageTierConfig {
+    pub tier: StorageTier,
+    pub max_size_bytes: u64,
+    pub path: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageStats {
+    pub vram_count: usize,
+    pub ram_count: usize,
+    pub disk_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpertCacheEntry {
+    pub expert_id: ExpertId,
+    pub tensor: Tensor,
+    pub last_used_timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TensorLayout {
+    pub offset: u64,
+    pub stride: u32,
+    pub shape: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShardMetadata {
+    pub owner: PublicKey,
+    pub license_hash: Option<Hash>,
+    pub created_at: u64,
+    pub version: u32,
+}
+
 impl fmt::Display for Tier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
