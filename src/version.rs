@@ -41,12 +41,6 @@ impl fmt::Display for RuntimeVersion {
     }
 }
 
-impl fmt::Debug for RuntimeVersion {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "RuntimeVersion({}.{}.{})", self.major, self.minor, self.patch)
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionInfo {
     pub runtime_version: RuntimeVersion,
@@ -64,7 +58,7 @@ impl VersionInfo {
             api_version: RuntimeVersion::current(),
             git_commit: option_env!("GIT_COMMIT").map(|s| s.to_string()),
             build_date: chrono::Utc::now().to_rfc3339(),
-            rust_version: env!("RUSTC_VERSION"),
+            rust_version: std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()),
             features: vec![
                 #[cfg(feature = "gpu")]
                 "gpu".to_string(),

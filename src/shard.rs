@@ -1,8 +1,9 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Error};
 use std::fmt;
 use uuid::Uuid;
 use chrono::Utc;
 use std::collections::HashMap;
+use crate::tensor::{Tensor, TensorDType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Shard {
@@ -22,7 +23,7 @@ pub struct ShardMetadata {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ShardId(pub [u8; 32]);
 
 impl ShardId {
@@ -40,7 +41,7 @@ impl fmt::Display for ShardId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExpertId(pub [u8; 32]);
 
 impl ExpertId {
@@ -76,7 +77,7 @@ impl fmt::Display for PublicKey {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hash(pub [u8; 32]);
 
 impl Hash {
@@ -94,8 +95,32 @@ impl fmt::Display for Hash {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Signature(pub [u8; 64]);
+
+impl serde::Serialize for Signature {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bytes(&self.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Signature {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let vec = Vec::<u8>::deserialize(deserializer)?;
+        if vec.len() != 64 {
+            return Err(D::Error::custom(format!("signature must be 64 bytes, got {}", vec.len())));
+        }
+        let mut arr = [0u8; 64];
+        arr.copy_from_slice(&vec);
+        Ok(Signature(arr))
+    }
+}
 
 impl Signature {
     pub fn new() -> Self {

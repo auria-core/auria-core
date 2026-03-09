@@ -3,6 +3,8 @@ use std::fmt;
 use std::collections::HashMap;
 use uuid::Uuid;
 use chrono::Utc;
+use crate::shard::{ShardId, ExpertId, LicenseHash, Hash};
+use crate::tensor::{Tensor, TensorLayout};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Expert {
@@ -19,24 +21,6 @@ pub struct ExpertMetadata {
     pub description: Option<String>,
     pub tags: Vec<String>,
     pub license_required: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExpertId(pub [u8; 32]);
-
-impl ExpertId {
-    pub fn new() -> Self {
-        let uuid = Uuid::new_v4();
-        let mut bytes = [0u8; 32];
-        bytes[..16].copy_from_slice(&uuid.as_bytes()[..16]);
-        Self(bytes)
-    }
-}
-
-impl fmt::Display for ExpertId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

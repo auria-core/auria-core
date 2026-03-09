@@ -1,4 +1,5 @@
 use thiserror::Error;
+use serde::{Serialize, Deserialize};
 
 #[derive(Error, Debug)]
 pub enum AuriaError {
