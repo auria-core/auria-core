@@ -23,7 +23,7 @@ pub mod shard;
 pub mod expert;
 pub mod version;
 
-pub use error::AuriaError;
+pub use error::{AuriaError, AuriaResult};
 pub use tensor::Tensor;
 pub use shard::Shard;
 pub use expert::Expert;
