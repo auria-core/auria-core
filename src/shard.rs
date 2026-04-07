@@ -1,9 +1,8 @@
-use serde::{Deserialize, Serialize, de::Error};
+use crate::tensor::{Tensor, TensorDType};
+use serde::{de::Error, Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use uuid::Uuid;
-use chrono::Utc;
-use std::collections::HashMap;
-use crate::tensor::{Tensor, TensorDType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Shard {
@@ -71,6 +70,20 @@ impl PublicKey {
     }
 }
 
+impl PartialEq for PublicKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for PublicKey {}
+
+impl std::hash::Hash for PublicKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
@@ -98,6 +111,14 @@ impl fmt::Display for Hash {
 #[derive(Debug, Clone)]
 pub struct Signature(pub [u8; 64]);
 
+impl PartialEq for Signature {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for Signature {}
+
 impl serde::Serialize for Signature {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -114,7 +135,10 @@ impl<'de> serde::Deserialize<'de> for Signature {
     {
         let vec = Vec::<u8>::deserialize(deserializer)?;
         if vec.len() != 64 {
-            return Err(D::Error::custom(format!("signature must be 64 bytes, got {}", vec.len())));
+            return Err(D::Error::custom(format!(
+                "signature must be 64 bytes, got {}",
+                vec.len()
+            )));
         }
         let mut arr = [0u8; 64];
         arr.copy_from_slice(&vec);
@@ -180,7 +204,8 @@ impl ShardIndex {
 
     pub fn add_shard(&mut self, shard: ShardDefinition) {
         self.shards.insert(shard.shard_id.clone(), shard.clone());
-        self.experts.entry(shard.expert_id.clone())
+        self.experts
+            .entry(shard.expert_id.clone())
             .or_insert_with(Vec::new)
             .push(shard.shard_id.clone());
     }

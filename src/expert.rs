@@ -1,10 +1,7 @@
-use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::collections::HashMap;
-use uuid::Uuid;
-use chrono::Utc;
-use crate::shard::{ShardId, ExpertId, LicenseHash, Hash};
+use crate::shard::{ExpertId, Hash, LicenseHash, ShardId};
 use crate::tensor::{Tensor, TensorLayout};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Expert {
@@ -71,7 +68,8 @@ impl ExpertRegistry {
     }
 
     pub fn add_expert(&mut self, expert: ExpertDefinition) {
-        self.experts.insert(expert.expert_id.clone(), expert.clone());
+        self.experts
+            .insert(expert.expert_id.clone(), expert.clone());
     }
 
     pub fn get_expert(&self, expert_id: &ExpertId) -> Option<&ExpertDefinition> {

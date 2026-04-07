@@ -1,12 +1,15 @@
+use crate::error::{AuriaError, AuriaResult};
+use crate::shard::{ExpertId, ShardId};
+use crate::tensor::{Tensor, TensorLayout};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::hash::Hasher;
 use std::sync::{Arc, RwLock};
-use rand::Rng;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutingDecision {
-    pub expert_ids: Vec<String>,
+    pub expert_ids: Vec<ExpertId>,
     pub confidence_scores: Vec<f32>,
     pub gating_weights: Vec<f32>,
     pub timestamp: u64,
@@ -14,19 +17,12 @@ pub struct RoutingDecision {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExpertRoutingInfo {
-    pub expert_id: String,
-    pub shard_ids: Vec<String>,
+    pub expert_id: ExpertId,
+    pub shard_ids: Vec<ShardId>,
     pub tensor_layout: TensorLayout,
     pub routing_score: f32,
-    pub last_accessed: Instant,
+    pub last_accessed: u64,
     pub hit_count: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TensorLayout {
-    pub offset: u64,
-    pub stride: u32,
-    pub shape: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,7 +44,7 @@ pub struct RoutingStats {
 
 pub struct Router {
     config: RoutingConfiguration,
-    expert_registry: Arc<RwLock<HashMap<String, ExpertRoutingInfo>>>,
+    expert_registry: Arc<RwLock<HashMap<ExpertId, ExpertRoutingInfo>>>,
     cache: Arc<RwLock<HashMap<String, RoutingDecision>>>,
     stats: Arc<RwLock<RoutingStats>>,
 }
@@ -68,8 +64,16 @@ impl Router {
         }
     }
 
-    pub fn route(&self, input_embedding: &[f32], model_state: &ModelState) -> AuriaResult<RoutingDecision> {
+    pub fn route(
+        &self,
+        input_embedding: &[f32],
+        model_state: &ModelState,
+    ) -> AuriaResult<RoutingDecision> {
         let start_time = Instant::now();
+        let start_timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let mut stats = self.stats.write().unwrap();
         stats.total_requests += 1;
 
@@ -77,7 +81,7 @@ impl Router {
         if self.config.use_caching {
             let cache_key = self.generate_cache_key(input_embedding, model_state);
             if let Some(cached_decision) = self.cache.read().unwrap().get(&cache_key) {
-                if Instant::now().duration_since(cached_decision.timestamp).as_secs() < self.config.cache_ttl_seconds {
+                if start_timestamp - cached_decision.timestamp < self.config.cache_ttl_seconds {
                     stats.cache_hits += 1;
                     return Ok(cached_decision.clone());
                 }
@@ -97,7 +101,9 @@ impl Router {
         expert_scores.sort_by(|a, b| {
             let combined_a = a.1 * a.2;
             let combined_b = b.1 * b.2;
-            combined_b.partial_cmp(&combined_a).unwrap_or(std::cmp::Ordering::Equal)
+            combined_b
+                .partial_cmp(&combined_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Select top-K experts
@@ -117,7 +123,8 @@ impl Router {
 
         // Calculate average confidence
         if !confidence_scores.is_empty() {
-            stats.average_confidence = confidence_scores.iter().sum::<f32>() / confidence_scores.len() as f32;
+            stats.average_confidence =
+                confidence_scores.iter().sum::<f32>() / confidence_scores.len() as f32;
         }
 
         // Calculate routing time
@@ -133,7 +140,10 @@ impl Router {
         // Cache the decision if enabled
         if self.config.use_caching {
             let cache_key = self.generate_cache_key(input_embedding, model_state);
-            self.cache.write().unwrap().insert(cache_key, decision.clone());
+            self.cache
+                .write()
+                .unwrap()
+                .insert(cache_key, decision.clone());
         }
 
         Ok(decision)
@@ -148,11 +158,16 @@ impl Router {
         self.stats.read().unwrap().clone()
     }
 
-    pub fn update_routing_configuration(&self, config: RoutingConfiguration) {
+    pub fn update_routing_configuration(&mut self, config: RoutingConfiguration) {
         self.config = config;
     }
 
-    fn calculate_routing_score(&self, input_embedding: &[f32], model_state: &ModelState, expert_info: &ExpertRoutingInfo) -> f32 {
+    fn calculate_routing_score(
+        &self,
+        input_embedding: &[f32],
+        _model_state: &ModelState,
+        expert_info: &ExpertRoutingInfo,
+    ) -> f32 {
         // Simple routing algorithm: dot product of input embedding with expert's routing vector
         let mut score = 0.0;
         for (i, &value) in input_embedding.iter().enumerate() {
@@ -164,8 +179,12 @@ impl Router {
         // Apply temperature
         score /= self.config.temperature;
 
-        // Apply diversity penalty
-        let age_factor = (Instant::now().duration_since(expert_info.last_accessed).as_secs() as f32 / 3600.0).min(1.0);
+        // Apply diversity penalty (using timestamp)
+        let now_timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let age_factor = ((now_timestamp - expert_info.last_accessed) as f32 / 3600.0).min(1.0);
         score *= 1.0 - (age_factor * self.config.diversity_penalty);
 
         // Clamp score between 0 and 1
@@ -178,7 +197,7 @@ impl Router {
         for &value in input_embedding {
             hasher.write_u32(value.to_bits());
         }
-        hasher.write_u64(model_state.position);
+        hasher.write_u32(model_state.position);
         format!("{:x}", hasher.finish())
     }
 }
@@ -216,7 +235,11 @@ pub struct ExpertRoutingPolicy {
 }
 
 impl Router {
-    pub fn create_routing_context(input_tokens: &[String], current_position: u32, batch_size: u32) -> RoutingContext {
+    pub fn create_routing_context(
+        input_tokens: &[String],
+        current_position: u32,
+        batch_size: u32,
+    ) -> RoutingContext {
         RoutingContext {
             input_tokens: input_tokens.to_vec(),
             current_position,
@@ -243,21 +266,26 @@ impl Router {
         }
     }
 
-    pub fn validate_routing_decision(&self, decision: &RoutingDecision, policy: &ExpertRoutingPolicy) -> AuriaResult<()> {
+    pub fn validate_routing_decision(
+        &self,
+        decision: &RoutingDecision,
+        policy: &ExpertRoutingPolicy,
+    ) -> AuriaResult<()> {
         // Check if number of experts is within policy limits
-        if decision.expert_ids.len() as u32 < policy.min_experts_per_step {
+        let num_experts = decision.expert_ids.len() as u32;
+        let min_experts = policy.min_experts_per_step;
+        if num_experts < min_experts {
             return Err(AuriaError::ExecutionError(format!(
                 "Too few experts selected ({}), minimum required is {}",
-                decision.expert_ids.len(),
-                policy.min_experts_per_step
+                num_experts, min_experts
             )));
         }
 
-        if decision.expert_ids.len() as u32 > policy.max_experts_per_step {
+        let max_experts = policy.max_experts_per_step;
+        if num_experts > max_experts {
             return Err(AuriaError::ExecutionError(format!(
                 "Too many experts selected ({}), maximum allowed is {}",
-                decision.expert_ids.len(),
-                policy.max_experts_per_step
+                num_experts, max_experts
             )));
         }
 
@@ -293,16 +321,18 @@ mod tests {
 
         // Add some test experts
         for i in 0..10 {
+            let mut expert_id_bytes = [0u8; 32];
+            expert_id_bytes[0] = i as u8;
             let expert_info = ExpertRoutingInfo {
-                expert_id: format!("expert_{}", i),
-                shard_ids: vec![format!("shard_{}", i)],
+                expert_id: ExpertId(expert_id_bytes),
+                shard_ids: vec![],
                 tensor_layout: TensorLayout {
                     offset: 0,
                     stride: 1,
                     shape: vec![128, 128],
                 },
                 routing_score: (i as f32 + 1.0) / 10.0,
-                last_accessed: Instant::now(),
+                last_accessed: 0,
                 hit_count: 0,
             };
             router.add_expert(expert_info);
@@ -346,11 +376,8 @@ mod tests {
         let router = Router::new(config);
 
         // Create routing context
-        let context = Router::create_routing_context(
-            &vec!["hello".to_string(), "world".to_string()],
-            2,
-            1,
-        );
+        let context =
+            Router::create_routing_context(&vec!["hello".to_string(), "world".to_string()], 2, 1);
 
         // Apply routing policy
         let policy = router.apply_routing_policy(&context);
@@ -375,7 +402,7 @@ mod tests {
 
         // Create valid routing decision
         let valid_decision = RoutingDecision {
-            expert_ids: vec!["expert_1".to_string(), "expert_2".to_string()],
+            expert_ids: vec![ExpertId([1u8; 32]), ExpertId([2u8; 32])],
             confidence_scores: vec![0.8, 0.7],
             gating_weights: vec![0.9, 0.8],
             timestamp: 12345,
@@ -395,7 +422,7 @@ mod tests {
 
         // Create invalid decision (too few experts)
         let invalid_decision = RoutingDecision {
-            expert_ids: vec!["expert_1".to_string()],
+            expert_ids: vec![ExpertId([1u8; 32])],
             confidence_scores: vec![0.8],
             gating_weights: vec![0.9],
             timestamp: 12345,
@@ -403,17 +430,10 @@ mod tests {
 
         let result = router.validate_routing_decision(&invalid_decision, &policy);
         assert!(result.is_err());
-        assert!(result.err().unwrap().to_string().contains("Too few experts selected"));
+        assert!(result
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("Too few experts selected"));
     }
 }
-
-pub use self::RoutingDecision;
-pub use self::ExpertRoutingInfo;
-pub use self::TensorLayout;
-pub use self::RoutingConfiguration;
-pub use self::RoutingStats;
-pub use self::Router;
-pub use self::ModelState;
-pub use self::PastKeyValues;
-pub use self::RoutingContext;
-pub use self::ExpertRoutingPolicy;

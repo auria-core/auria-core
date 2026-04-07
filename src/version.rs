@@ -31,7 +31,11 @@ impl RuntimeVersion {
         let minor = parts[1].parse::<u16>().ok()?;
         let patch = parts[2].parse::<u16>().ok()?;
 
-        Some(Self { major, minor, patch })
+        Some(Self {
+            major,
+            minor,
+            patch,
+        })
     }
 }
 

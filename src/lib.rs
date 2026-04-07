@@ -18,13 +18,19 @@
 //! - `gpu`: Enables GPU-related types and functionality (currently unused in core)
 
 pub mod error;
-pub mod tensor;
-pub mod shard;
 pub mod expert;
+pub mod license;
+pub mod router;
+pub mod settlement;
+pub mod shard;
+pub mod tensor;
 pub mod version;
 
-pub use error::{AuriaError, AuriaResult};
-pub use tensor::Tensor;
-pub use shard::Shard;
+pub use error::{AuriaError, AuriaResult, Tier};
 pub use expert::Expert;
+pub use license::License;
+pub use router::{Router as RoutingRouter, RoutingDecision};
+pub use settlement::{RequestId, UsageReceipt, UsageStats};
+pub use shard::{ExpertId, Hash, LicenseHash, PublicKey, Shard, ShardId, Signature};
+pub use tensor::{Tensor, TensorDType, TensorLayout};
 pub use version::RuntimeVersion;
